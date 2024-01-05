@@ -4,7 +4,7 @@ import io
 
 app = Flask(__name__)
 
-# HTML Template with Tailwind CSS for the upload form
+# HTML Template for the upload form
 html_template = """
 <!DOCTYPE html>
 <html lang="en">
@@ -40,14 +40,33 @@ def upload_file():
     if uploaded_file.filename != '':
         df = pd.read_csv(uploaded_file, sep=';', engine='python')
         df['Mængde'] = df['Mængde'].str.replace(',', '.').astype(float)
-        converted_df = df[['Fra_dato', 'Mængde']].rename(columns={'Fra_dato': 'Datetime', 'Mængde': 'kWh'})
-        converted_df['Datetime'] = pd.to_datetime(converted_df['Datetime'], format='%d-%m-%Y %H:%M')
 
-        output = io.StringIO()
-        converted_df.to_csv(output, index=False)
+        # Håndter flere målepunkter
+        if len(df['MålepunktsID'].unique()) > 1:
+            df = df[df['MålepunktsID'] == df['MålepunktsID'].unique()[1]]  # Vælg det andet målepunkt
+
+        # Håndtering af forskellige datotidsformater
+        try:
+            df['Fra_dato'] = pd.to_datetime(df['Fra_dato'], format='%d-%m-%Y %H:%M:%S')
+        except ValueError:
+            df['Fra_dato'] = pd.to_datetime(df['Fra_dato'], format='%d-%m-%Y %H:%M')
+
+        # Formatering af 'Datetime' kolonnen til det ønskede format
+        df['Fra_dato'] = df['Fra_dato'].dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        # Filtrerer data for at udelukke dagsforbrug
+        df = df[df['Fra_dato'].str.endswith("00:00:00") == False]
+
+        # Omdanner til den ønskede struktur
+        converted_df = df[['Fra_dato', 'Mængde']].rename(columns={'Fra_dato': 'Datetime', 'Mængde': 'kWh'})
+        converted_df = converted_df[converted_df['kWh'] != 0]
+
+        # Konvertering til CSV
+        output = io.BytesIO()
+        converted_df.to_csv(output, index=False, sep=',', encoding='utf-8')
         output.seek(0)
 
-        return send_file(output, attachment_filename='converted.csv', as_attachment=True)
+        return send_file(output, as_attachment=True, download_name='converted.csv', mimetype='text/csv')
 
 if __name__ == '__main__':
     app.run(debug=True)
