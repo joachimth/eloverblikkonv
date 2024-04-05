@@ -1,6 +1,7 @@
 from flask import Flask, request, send_file, render_template_string
 import pandas as pd
 import io
+import os  # Importer 'os' for at arbejde med filsystemet
 
 app = Flask(__name__)
 
@@ -66,7 +67,11 @@ def upload_file():
         converted_df.to_csv(output, index=False, sep=',', encoding='utf-8')
         output.seek(0)
 
-        return send_file(output, as_attachment=True, download_name='converted.csv', mimetype='text/csv')
+	# Ændring her: Genererer det nye filnavn baseret på det oprindelige filnavn
+        original_filename_base = os.path.splitext(uploaded_file.filename)[0]  # Fjerner filtypen fra det oprindelige filnavn
+        new_filename = f"{original_filename_base}_converted.csv"  # Tilføjer '_converted.csv'
+
+        return send_file(output, as_attachment=True, download_name=new_filename, mimetype='text/csv')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
