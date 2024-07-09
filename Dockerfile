@@ -1,5 +1,5 @@
 # Brug et officielt Python runtime som base image
-FROM python:3.8
+FROM python:3.10
 
 # Sæt arbejdsdirectory i containeren
 WORKDIR /usr/src/app
