@@ -1,7 +1,8 @@
 from flask import Flask, request, send_file, render_template_string
 import pandas as pd
 import io
-import os  # Importer 'os' for at arbejde med filsystemet
+import os
+import zipfile  # Importer 'zipfile' for at arbejde med ZIP-filer
 
 app = Flask(__name__)
 
@@ -42,36 +43,55 @@ def upload_file():
         df = pd.read_csv(uploaded_file, sep=';', engine='python')
         df['Mængde'] = df['Mængde'].str.replace(',', '.').astype(float)
 
-        # Håndter flere målepunkter
-        if len(df['MålepunktsID'].unique()) > 1:
-            df = df[df['MålepunktsID'] == df['MålepunktsID'].unique()[1]]  # Vælg det andet målepunkt
+        # Find unique MålepunktsID values
+        unique_ids = df['MålepunktsID'].unique()
 
-        # Håndtering af forskellige datotidsformater
-        try:
-            df['Fra_dato'] = pd.to_datetime(df['Fra_dato'], format='%d-%m-%Y %H:%M:%S')
-        except ValueError:
-            df['Fra_dato'] = pd.to_datetime(df['Fra_dato'], format='%d-%m-%Y %H:%M')
+        output_files = []
 
-        # Formatering af 'Datetime' kolonnen til det ønskede format
-        df['Fra_dato'] = df['Fra_dato'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        for mp_id in unique_ids:
+            # Filter data for the current MålepunktsID
+            df_filtered = df[df['MålepunktsID'] == mp_id]
 
-        # Filtrerer data for at udelukke dagsforbrug
-        df = df[df['Fra_dato'].str.endswith("00:00:00") == False]
+            # Handle different date-time formats
+            try:
+                df_filtered['Fra_dato'] = df_filtered['Fra_dato'].str.replace('/', '-').str.replace('.', ':')
+                df_filtered['Fra_dato'] = pd.to_datetime(df_filtered['Fra_dato'], format='%d-%m-%Y %H:%M:%S')
+            except ValueError:
+                df_filtered['Fra_dato'] = pd.to_datetime(df_filtered['Fra_dato'], format='%d-%m-%Y %H:%M')
 
-        # Omdanner til den ønskede struktur
-        converted_df = df[['Fra_dato', 'Mængde']].rename(columns={'Fra_dato': 'Datetime', 'Mængde': 'kWh'})
-        converted_df = converted_df[converted_df['kWh'] != 0]
+            # Format the 'Datetime' column to the desired format
+            df_filtered['Fra_dato'] = df_filtered['Fra_dato'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Konvertering til CSV
-        output = io.BytesIO()
-        converted_df.to_csv(output, index=False, sep=',', encoding='utf-8')
-        output.seek(0)
+            # Filter data to exclude daily consumption
+            df_filtered = df_filtered[df_filtered['Fra_dato'].str.endswith("00:00:00") == False]
 
-	# Ændring her: Genererer det nye filnavn baseret på det oprindelige filnavn
-        original_filename_base = os.path.splitext(uploaded_file.filename)[0]  # Fjerner filtypen fra det oprindelige filnavn
-        new_filename = f"{original_filename_base}_converted.csv"  # Tilføjer '_converted.csv'
+            # Transform to the desired structure
+            converted_df = df_filtered[['Fra_dato', 'Mængde']].rename(columns={'Fra_dato': 'Datetime', 'Mængde': 'kWh'})
+            converted_df = converted_df[converted_df['kWh'] != 0]
 
-        return send_file(output, as_attachment=True, download_name=new_filename, mimetype='text/csv')
+            # Calculate the total kWh for the current MålepunktsID
+            total_kwh = converted_df['kWh'].sum()
+
+            # Convert to CSV
+            output = io.BytesIO()
+            converted_df.to_csv(output, index=False, sep=',', encoding='utf-8')
+            output.seek(0)
+
+            # Generate the new filename based on the original filename, MålepunktsID, and total kWh
+            original_filename_base = os.path.splitext(uploaded_file.filename)[0]  # Remove file extension from the original filename
+            new_filename = f"{original_filename_base}_{mp_id}_{total_kwh:.2f}kWh_converted.csv"  # Add '_converted.csv'
+
+            output_files.append((new_filename, output))
+
+        # Create a ZIP file
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_name, data in output_files:
+                zip_file.writestr(file_name, data.getvalue())
+        zip_buffer.seek(0)
+
+        # Send the ZIP file
+        return send_file(zip_buffer, as_attachment=True, download_name="converted_files.zip", mimetype='application/zip')
 
 if __name__ == '__main__':
     app.run(debug=False)
