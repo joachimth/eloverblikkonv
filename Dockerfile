@@ -1,23 +1,24 @@
 # Brug et officielt Python runtime som base image
-FROM python:3.10
+FROM python:3.10-slim
 
 # Sæt arbejdsdirectory i containeren
-WORKDIR /usr/src/app
+WORKDIR /app
 
 # Kopier requirements filen til containeren
-COPY requirements.txt ./
+COPY requirements.txt /app/
 
 # Installer eventuelle nødvendige pakker
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Kopier din applikationskildekode til containeren
-COPY . .
+COPY . /app
 
 # Gør port 5000 tilgængelig uden for containeren
 EXPOSE 5000
 
 # Definer miljøvariabel
-ENV FLASK_ENV=production
+ENV FLASK_APP=app.py
+ENV FLASK_RUN_HOST=0.0.0.0
 
-# Kør applikationen, når containeren starter
-CMD ["flask", "run", "--host=0.0.0.0"]
+# Run the application
+CMD ["flask", "run"]
