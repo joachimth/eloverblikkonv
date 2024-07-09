@@ -1,3 +1,2 @@
-Flask
-pandas
-zipfile
+Flask==2.1.1
+pandas==1.4.2
